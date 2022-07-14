@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include "pico/stdlib.h"
 #include "hardware/spi.h"
+#include "filters.hpp"
 
 //#define PRINT_DEBUG_STATEMENTS
 
@@ -70,7 +71,7 @@ class PICO_LSM6DSO
 
         const uint8_t WhoAmIExpectedValue = 0x6C;
 
-        float convertAccelValue(int8_t rawMSB, int8_t rawLSB, LSM6DSO_FS_XL_t range, float offset)
+        float convertAccelValue(int8_t rawMSB, int8_t rawLSB, LSM6DSO_FS_XL_t range)
         {
             float multiple;
             switch(range)
@@ -94,10 +95,12 @@ class PICO_LSM6DSO
 
             int16_t rawData = ((rawMSB << 8) | rawLSB);
 
-            return ((static_cast<float>(rawData)  * multiple) / 1000) + offset;
+            return (static_cast<float>(rawData)  * multiple) / 1000;
+
+
         }
 
-        float convertGyroValue(int8_t rawMSB, int8_t rawLSB, LSM6DSO_FS_G_t range, float offset)
+        float convertGyroValue(int8_t rawMSB, int8_t rawLSB, LSM6DSO_FS_G_t range)
         {
             float multiple;
             switch(range)
@@ -124,16 +127,22 @@ class PICO_LSM6DSO
 
             int16_t rawData = ((rawMSB << 8) | rawLSB);
             
-            return ((static_cast<float>(rawData)  * multiple) / 1000) + offset;
+            return (static_cast<float>(rawData)  * multiple) / 1000;
         }
 
-        float convertTempValue(int8_t rawMSB, int8_t rawLSB, float offset)
+        float convertTempValue(int8_t rawMSB, int8_t rawLSB)
         {
             float result = rawMSB;
             result += rawLSB / 256;
-            result += offset;
 
             return result;
+        }
+
+        void nullAndOffsetData(float * value, LowPassFilter filter, float offset)
+        {
+            float tmpVal = *value;
+            tmpVal += offset;
+            *value = filter.addNewData(tmpVal);
         }
 
         void reg_write(spi_inst_t * spi, const uint cs, const uint8_t reg, const uint8_t data)
@@ -186,20 +195,14 @@ class PICO_LSM6DSO
 
         void readAllMeasurements(spi_inst_t * spi, uint cs, float * data)
         {
-            uint8_t buf[14];
+            getAllData(spi, cs, data);
 
-            reg_read(spi, cs, REGISTER_ADDRESS_OUT_TEMP_L, buf, 14);
-#ifdef PRINT_DEBUG_STATEMENTS
-            printf("Data: 0x%X, 0x%X, 0x%X, 0x%X, 0x%X, 0x%X\n", data[0], data[1], data[2], data[3], data[4], data[5]);
-#endif
-
-            data[0] = convertTempValue(buf[1], buf[0], nullCalibrationData[0]);
-            data[1] = convertGyroValue(buf[3], buf[2], FS_G_500dps, nullCalibrationData[1]);
-            data[2] = convertGyroValue(buf[5], buf[4], FS_G_500dps, nullCalibrationData[2]);
-            data[3] = convertGyroValue(buf[7], buf[6], FS_G_500dps, nullCalibrationData[3]);
-            data[4] = convertAccelValue(buf[9], buf[8], FS_XL_8g, nullCalibrationData[4]);
-            data[5] = convertAccelValue(buf[11], buf[10], FS_XL_8g, nullCalibrationData[5]);
-            data[6] = convertAccelValue(buf[13], buf[12], FS_XL_8g, nullCalibrationData[6]);
+            for(int i = 0; i < 7; i++)
+            {
+                nullAndOffsetData(&data[i], filters[i], 0/*nullCalibrationData[i]*/);
+            }
+            printf("Filtered: %+.6f, %+.6f, %+.6f, %+.6f, %+.6f, %+.6f, %+.6f\n",
+                    data[0], data[1], data[2], data[3], data[4], data[5], data[6]);
         }
 
         bool initialize(spi_inst_t * spi, uint cs, LSM6DSO_ODR_t rate)
@@ -219,11 +222,16 @@ class PICO_LSM6DSO
             }
 
             reg_update(spi, cs, REGISTER_ADDRESS_CTRL1_XL, ODR_MASK, refreshRate);
-            reg_update(spi, cs, REGISTER_ADDRESS_CTRL1_XL, FS_XL_MASK, FS_XL_4g);
+            reg_update(spi, cs, REGISTER_ADDRESS_CTRL1_XL, FS_XL_MASK, accelRange);
             reg_update(spi, cs, REGISTER_ADDRESS_CTRL3_C, BDU_MASK, BDU_BLOCK_UPDATE);
             reg_update(spi, cs, REGISTER_ADDRESS_CTRL3_C, IF_INC_MASK, IF_INC_ENABLED);
-            reg_update(spi, cs, REGISTER_ADDRESS_CTRL2_G, FS_G_MASK, FS_G_500dps);
+            reg_update(spi, cs, REGISTER_ADDRESS_CTRL2_G, FS_G_MASK, gyroRange);
             reg_update(spi, cs, REGISTER_ADDRESS_CTRL2_G, ODR_MASK, refreshRate);
+
+            for(int i = 0; i < 7; i++)
+            {
+                filters[i].setBeta(0.1);
+            }
 
             calibrateIMUData(spi, cs);
 
@@ -237,7 +245,7 @@ class PICO_LSM6DSO
 
             for(int i = 0; i < calibrationPoints; i++)
             {
-                readAllMeasurements(spi, cs, readings);
+                getAllData(spi, cs, readings);
                 for(int j = 0; j < 7; j++) averages[j] += readings[j];
                 sleep_ms(50);
             }
@@ -253,7 +261,28 @@ class PICO_LSM6DSO
         }
 
     private:
+        void getAllData(spi_inst_t * spi, uint cs, float * data)
+        {
+            uint8_t buf[14];
+
+            reg_read(spi, cs, REGISTER_ADDRESS_OUT_TEMP_L, buf, 14);
+#ifdef PRINT_DEBUG_STATEMENTS
+            printf("Data: 0x%X, 0x%X, 0x%X, 0x%X, 0x%X, 0x%X\n", data[0], data[1], data[2], data[3], data[4], data[5]);
+#endif
+
+            data[0] = convertTempValue(buf[1], buf[0]);
+            data[1] = convertGyroValue(buf[3], buf[2], gyroRange);
+            data[2] = convertGyroValue(buf[5], buf[4], gyroRange);
+            data[3] = convertGyroValue(buf[7], buf[6], gyroRange);
+            data[4] = convertAccelValue(buf[9], buf[8], accelRange);
+            data[5] = convertAccelValue(buf[11], buf[10], accelRange);
+            data[6] = convertAccelValue(buf[13], buf[12], accelRange);
+        }
+
         LSM6DSO_ODR_t refreshRate;
         uint calibrationPoints = 25;
         float nullCalibrationData[7];
+        LowPassFilter filters[7];
+        LSM6DSO_FS_G_t gyroRange = FS_G_500dps;
+        LSM6DSO_FS_XL_t accelRange = FS_XL_4g;
 };

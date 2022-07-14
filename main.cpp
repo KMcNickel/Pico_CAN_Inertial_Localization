@@ -53,7 +53,7 @@ void startupIMU()
     gpio_set_function(IMU_RX_PIN, GPIO_FUNC_SPI);
 
     printf("Setting up LSM6DSO...\n");
-    if(!lsm6dso.initialize(IMU_SPI_PERIPHERAL, IMU_CS_PIN, lsm6dso.ODR_12_5Hz))
+    if(!lsm6dso.initialize(IMU_SPI_PERIPHERAL, IMU_CS_PIN, lsm6dso.ODR_416Hz))
     {
         printf("Setup failed!");
         while(true);
@@ -117,11 +117,9 @@ int main ()
             angularVelocities[i] = imuData[i + 4];
         }
 
-        printf("Vals: %.2f, %.2f, %.2f, %.2f, %.2f, %.2f, %.2f\n", temperature,
+        /*printf("Vals: %.2f, %.2f, %.2f, %.2f, %.2f, %.2f, %.2f\n", temperature,
                 linearVelocities[0], linearVelocities[1], linearVelocities[2],
-                angularVelocities[0], angularVelocities[1], angularVelocities[2]);
-        /*printf("Accels: %.6f, %.6f, %.6f, %.6f, %.6f, %.6f\n",
-                imuData[1], imuData[2], imuData[3], imuData[4], imuData[5], imuData[5]);*/
-        sleep_ms(200);
+                angularVelocities[0], angularVelocities[1], angularVelocities[2]);*/
+        sleep_ms(10);
     }
 }
