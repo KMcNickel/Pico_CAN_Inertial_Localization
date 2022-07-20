@@ -11,6 +11,10 @@ pico_sdk_init()
 add_executable(${PROJECT_NAME}
     main.cpp
     mcp2515.cpp
+    lsm6dso_reg.c
+    lsm6dso_pid_pico.c
+    dwm_api.c
+    dwm1001_uart_pico.c
 )
 
 pico_add_extra_outputs(${PROJECT_NAME})

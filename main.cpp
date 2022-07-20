@@ -3,8 +3,10 @@
 #include <stdint.h>
 #include "pico/stdlib.h"
 #include "hardware/spi.h"
-#include "include/pico_lsm6dso.hpp"
 #include "include/mcp2515.h"
+#include "include/lsm6dso_pid_pico.h"
+#include "include/filters.hpp"
+#include "include/dwm1001_uart_pico.h"
 
 //CAN Interface
 #define CAN_SCK_PIN 2
@@ -16,48 +18,62 @@
 #define IMU_TX_PIN 11
 #define IMU_RX_PIN 12
 #define IMU_CS_PIN 13
-//UART Interface
-#define UART_TX_PIN 16
-#define UART_RX_PIN 17
+//UWB Interface
+#define UWB_UART_TX_PIN 8
+#define UWB_UART_RX_PIN 9
+//STDIO Interface
+#define STDIO_UART_TX_PIN 16
+#define STDIO_UART_RX_PIN 17
 
 #define STDIO_UART_PERIPHERAL uart0
+#define UWB_UART_PERIPHERAL uart1
 #define CANBUS_SPI_PERIPHERAL spi0
 #define IMU_SPI_PERIPHERAL spi1
 
-PICO_LSM6DSO lsm6dso;
+LSM6DSO_PID_Pico lsm6dso;
+DWM1001_Device dwm1001;
+LowPassFilter filter(0.015);
 
-MCP2515 mcp2515(CANBUS_SPI_PERIPHERAL, CAN_CS_PIN, CAN_TX_PIN, CAN_RX_PIN, CAN_SCK_PIN, 1000 * 1000);
+MCP2515 mcp2515(CANBUS_SPI_PERIPHERAL, CAN_CS_PIN, CAN_TX_PIN, CAN_RX_PIN, CAN_SCK_PIN, 1000000);
 
-void startupStdioUART()
+void startupStdio()
 {
     //Remove UART from the default pins and put it on the custom pins
     gpio_set_function(0, GPIO_FUNC_NULL);
     gpio_set_function(1, GPIO_FUNC_NULL);
-    gpio_set_function(UART_TX_PIN, GPIO_FUNC_UART);
-    gpio_set_function(UART_RX_PIN, GPIO_FUNC_UART);
+    gpio_set_function(STDIO_UART_TX_PIN, GPIO_FUNC_UART);
+    gpio_set_function(STDIO_UART_RX_PIN, GPIO_FUNC_UART);
 
+    stdio_init_all();
+}
+
+void startupUWB()
+{
+    printf("Setting up DWM1001...\n");
+
+    dwm1001_init(&dwm1001, UWB_UART_PERIPHERAL, UWB_UART_TX_PIN, UWB_UART_RX_PIN);
+    if(!dwm1001_check_communication(&dwm1001))
+    {
+        printf("Failed to communicate with the DWM1001\n");
+        while(1) sleep_ms(1);
+    }
+
+    printf("DWM1001 setup complete\n");
 }
 
 void startupIMU()
 {
-    gpio_init(IMU_CS_PIN);
-    gpio_set_dir(IMU_CS_PIN, GPIO_OUT);
-    gpio_put(IMU_CS_PIN, 1);
-
-    spi_init(IMU_SPI_PERIPHERAL, 1000 * 1000);
-
-    spi_set_format(IMU_SPI_PERIPHERAL, 8, SPI_CPOL_1, SPI_CPHA_1, SPI_MSB_FIRST);
-    
-    gpio_set_function(IMU_SCK_PIN, GPIO_FUNC_SPI);
-    gpio_set_function(IMU_TX_PIN, GPIO_FUNC_SPI);
-    gpio_set_function(IMU_RX_PIN, GPIO_FUNC_SPI);
-
     printf("Setting up LSM6DSO...\n");
-    if(!lsm6dso.initialize(IMU_SPI_PERIPHERAL, IMU_CS_PIN, lsm6dso.ODR_416Hz))
+
+    lsm6dso_init(&lsm6dso, IMU_SPI_PERIPHERAL, IMU_CS_PIN);
+    lsm6dso_setupPort(&lsm6dso, 10000000, IMU_SCK_PIN, IMU_TX_PIN, IMU_RX_PIN);
+    if(!lsm6dso_check_communication(&lsm6dso))
     {
-        printf("Setup failed!");
-        while(true);
+        printf("Failed to communicate with LSM6DSO\n");
+        while(1) sleep_ms(1);
     }
+    lsm6dso_setupDevice(&lsm6dso, LSM6DSO_XL_ODR_104Hz, LSM6DSO_8g, LSM6DSO_GY_ODR_104Hz, LSM6DSO_500dps);
+
     printf("LSM6DSO setup complete\n");
 }
 
@@ -74,52 +90,24 @@ void startupCANBus()
 
 void peripheralStartup()
 {
-    startupStdioUART(); //We have to do this before stdio will work
-    stdio_init_all();
+    startupStdio();
 
     printf("Setting up Pins and Peripherals...\n");
 
     startupIMU();
-    //startupCANBus();
+    startupUWB();
+    startupCANBus();
 
     printf("Pins and Peripherals setup complete\n");
 }
 
-void calculateLinearVelocity(float acceleration, float * currentValue, uint timeMs)
-{
-    *currentValue = *currentValue + (acceleration * 9.8) * (timeMs / 1000.0);
-}
-
 int main ()
 {
-    float imuData[7];
-    float temperature = 0.0;
-    float linearVelocities[3] = {0.0, 0.0, 0.0};
-    float angularVelocities[3] = {0.0, 0.0, 0.0};
-    can_frame frame;
-
     peripheralStartup();
 
     sleep_ms(1000);
 
     while(true)
     {
-        lsm6dso.readAllMeasurements(IMU_SPI_PERIPHERAL, IMU_CS_PIN, imuData);
-        frame.can_id = 0x01;
-        frame.can_dlc = 1;
-        frame.data[0] += 1;
-        //mcp2515.sendMessage(&frame);
-
-        temperature = imuData[0];
-        for(int i = 0; i < 3; i++)
-        {
-            calculateLinearVelocity(imuData[i + 1], &linearVelocities[i], 200);
-            angularVelocities[i] = imuData[i + 4];
-        }
-
-        /*printf("Vals: %.2f, %.2f, %.2f, %.2f, %.2f, %.2f, %.2f\n", temperature,
-                linearVelocities[0], linearVelocities[1], linearVelocities[2],
-                angularVelocities[0], angularVelocities[1], angularVelocities[2]);*/
-        sleep_ms(10);
     }
 }
