@@ -15,6 +15,11 @@ class LowPassFilter
             beta = b;
         }
 
+        void setInitialValue(float data)
+        {
+            currentValue = data;
+        }
+
         float addNewData(float data)
         {
             currentValue = currentValue - (beta * (currentValue - data));
