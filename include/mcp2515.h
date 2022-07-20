@@ -428,7 +428,7 @@ class MCP2515 {
             MCP_RXB1DATA = 0x76
         };
 
-        static const uint32_t DEFAULT_SPI_CLOCK = 10000000; // 10MHz
+        static const uint DEFAULT_SPI_CLOCK = 10000000; // 10MHz
 
         static const int N_TXBUFFERS = 3;
         static const int N_RXBUFFERS = 2;
@@ -471,7 +471,7 @@ class MCP2515 {
             uint8_t TX_PIN = PICO_DEFAULT_SPI_TX_PIN,
             uint8_t RX_PIN = PICO_DEFAULT_SPI_RX_PIN,
             uint8_t SCK_PIN = PICO_DEFAULT_SPI_SCK_PIN,
-            uint32_t _SPI_CLOCK = DEFAULT_SPI_CLOCK
+            uint _SPI_CLOCK = DEFAULT_SPI_CLOCK
         );
         ERROR reset(void);
         ERROR setConfigMode();
