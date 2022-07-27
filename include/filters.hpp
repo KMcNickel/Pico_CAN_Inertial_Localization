@@ -26,9 +26,20 @@ class LowPassFilter
             return currentValue;
         }
 
+        void addNewData(float * data)
+        {
+            currentValue = currentValue - (beta * (currentValue - *data));
+            *data = currentValue;
+        }
+
         float getCurrentValue()
         {
             return currentValue;
+        }
+
+        float * CurrentValue()
+        {
+            return &currentValue;
         }
 
     private:

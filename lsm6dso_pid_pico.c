@@ -206,3 +206,24 @@ bool lsm6dso_get_temp_data(LSM6DSO_Pico * handle, float * buf, LSM6DSO_Temperatu
 
     return 1;
 }
+
+bool lsm6dso_get_2d_motion_data(LSM6DSO_Pico * handle, float * buf)
+{
+    lsm6dso_status_t status;
+    int16_t raw[3];
+
+    lsm6dso_status_get(&(handle->imu_device), NULL, &status);
+    if(!status.drdy_xl) return 0;
+    if(!status.drdy_g) return 0;
+
+    lsm6dso_acceleration_raw_get(&(handle->imu_device), raw);
+
+    buf[0] = convertAcceleration(raw[0], handle->accelRange);
+    buf[1] = convertAcceleration(raw[1], handle->accelRange);
+
+    lsm6dso_angular_rate_raw_get(&(handle->imu_device), raw);
+
+    buf[2] = convertAcceleration(raw[2], handle->accelRange);
+
+    return 1;
+}

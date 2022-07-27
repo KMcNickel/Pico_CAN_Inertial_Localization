@@ -35,6 +35,7 @@ void lsm6dso_setupDevice(LSM6DSO_Pico * handle, lsm6dso_odr_xl_t accelRate,
 bool lsm6dso_get_accel_data(LSM6DSO_Pico * handle, float * buf);
 bool lsm6dso_get_gyro_data(LSM6DSO_Pico * handle, float * buf);
 bool lsm6dso_get_temp_data(LSM6DSO_Pico * handle, float * buf, LSM6DSO_Temperature_Type);
+bool lsm6dso_get_2d_motion_data(LSM6DSO_Pico * handle, float * buf);
 
 #ifdef __cplusplus
 }
