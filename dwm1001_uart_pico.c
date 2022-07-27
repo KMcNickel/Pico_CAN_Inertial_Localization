@@ -11,6 +11,8 @@
 #define DWM1001_UART_DATA_BITS 8
 #define DWM1001_UART_STOP_BITS 1
 
+#define READ_WAIT_MICROSECONDS 100000
+
 #define DWM1001_SUPPORTED_FW_VERSION_MAJOR 1
 #define DWM1001_SUPPORTED_FW_VERSION_MINOR 3
 #define DWM1001_SUPPORTED_FW_VERSION_PATCH 0
@@ -29,9 +31,13 @@ int32_t platform_read(void * handle, uint8_t * buf, uint8_t * actualLen, uint8_t
 {
     DWM1001_Device * device = (DWM1001_Device *) handle;
 
-    for(int i = 0; i < expectedLen; i++) *(buf + i) = uart_getc(device->uart);
-
-    *actualLen = expectedLen;
+    for(int i = 0; i < expectedLen; i++)
+    {
+        if(!uart_is_readable_within_us(device->uart, READ_WAIT_MICROSECONDS))
+            break;
+        *(buf + i) = uart_getc(device->uart);
+        *actualLen = i + 1;
+    }
 
     return 0;
 }
@@ -65,6 +71,25 @@ bool dwm1001_check_communication(DWM1001_Device * handle)
         return 0;
     if(version.fw.maj != DWM1001_SUPPORTED_FW_VERSION_MAJOR)
         return 0;
+
+    return 1;
+}
+
+bool dwm1001_check_location_ready(DWM1001_Device * handle)
+{
+    dwm_status_t status;
+
+    dwm_status_get(&(handle->uwb_device), &status);
+
+    return status.loc_data;
+}
+
+bool dwm1001_get_location(DWM1001_Device * handle, dwm_loc_data_t* loc)
+{
+    if(!dwm1001_check_location_ready(handle))
+        return 0;
+
+    dwm_loc_get(&(handle->uwb_device), loc);
 
     return 1;
 }

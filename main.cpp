@@ -34,7 +34,7 @@ LSM6DSO_PID_Pico lsm6dso;
 DWM1001_Device dwm1001;
 LowPassFilter filter(0.015);
 
-MCP2515 mcp2515(CANBUS_SPI_PERIPHERAL, CAN_CS_PIN, CAN_TX_PIN, CAN_RX_PIN, CAN_SCK_PIN, 1000000);
+MCP2515 mcp2515(CANBUS_SPI_PERIPHERAL, CAN_CS_PIN, CAN_TX_PIN, CAN_RX_PIN, CAN_SCK_PIN, 500000);
 
 void startupStdio()
 {
@@ -103,11 +103,16 @@ void peripheralStartup()
 
 int main ()
 {
+    dwm_pos_t position;
+    dwm_loc_data_t location;
+    location.p_pos = &position;
     peripheralStartup();
-
-    sleep_ms(1000);
 
     while(true)
     {
+        if(dwm1001_get_location(&dwm1001, &location))
+        {
+            printf("Location: X: %.2f, Y: %.2f, Z: %.2f, Qf: %d%%\r\n", position.x / 1000.0, position.y / 1000.0, position.z / 1000.0, position.qf);
+        }
     }
 }

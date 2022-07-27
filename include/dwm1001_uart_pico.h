@@ -20,6 +20,8 @@ typedef struct
 
 void dwm1001_init(DWM1001_Device * handle, uart_inst_t * uartPort, uint tx_pin, uint rx_pin);
 bool dwm1001_check_communication(DWM1001_Device * handle);
+bool dwm1001_check_location_ready(DWM1001_Device * handle);
+bool dwm1001_get_location(DWM1001_Device * handle, dwm_loc_data_t* loc);
 
 #ifdef __cplusplus
 }
